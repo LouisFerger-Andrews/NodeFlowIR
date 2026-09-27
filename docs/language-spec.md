@@ -173,7 +173,7 @@ Collection predicate and mapper scopes are explicit in the compiled IR. Source m
 
 ## Control flow and scope
 
-`if` / `else if` / `else`, `match` / `case` / `default`, `foreach`, `repeat`, and `parallel` map one-to-one to their existing structured IR models. `repeat` is statically bounded. `break` and `continue` are syntactically accepted anywhere but rejected by the existing IR validator unless they are inside a `foreach` or `repeat` body.
+`if` / `else if` / `else`, `match` / `case` / `default`, `foreach`, `repeat`, and `parallel` map one-to-one to their existing structured IR models. `repeat` is statically bounded. `break` and `continue` are syntactically accepted anywhere but rejected by the existing IR validator unless they are inside a `foreach` or `repeat` body. DSL case syntax has no visual identity field, so the compiler creates stable match-local case IDs in source order (`case_1`, `case_2`, ...); parallel branches use their explicit node alias when present or match-local `branch_1`, `branch_2`, ... IDs.
 
 DSL 1.0 intentionally has no `fail` statement or application exception syntax because the current IR has no corresponding generic control-flow construct. A workflow that needs that behavior uses a registered application node in a `case` or `default` block.
 

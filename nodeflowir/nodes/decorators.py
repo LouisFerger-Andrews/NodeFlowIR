@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Union, get_args, get_origin, get_type_hints
 from pydantic import BaseModel, JsonValue
 
 from nodeflowir.ir.types import TypeSpec, ValueKind
+from nodeflowir.metadata import Deprecation
 from nodeflowir.nodes.contract import NodeDefinition, PortDefinition
 from nodeflowir.nodes.fields import ConfigField, ConfigurationField
 from nodeflowir.nodes.registry import NodeRegistry
@@ -98,6 +99,9 @@ def definition_from_callable(
     display_name: str | None = None,
     description: str | None = None,
     category: str | None = None,
+    icon: str | None = None,
+    search_terms: tuple[str, ...] = (),
+    deprecation: Deprecation | None = None,
     handler: str | None = None,
     metadata: dict[str, JsonValue] | None = None,
 ) -> NodeDefinition:
@@ -123,6 +127,9 @@ def definition_from_callable(
         display_name=display_name or function.__name__.replace("_", " ").title(),
         description=description or inspect.getdoc(function),
         category=category,
+        icon=icon,
+        search_terms=search_terms,
+        deprecation=deprecation,
         handler=handler,
         inputs=inputs,
         outputs=_outputs_from_annotation(hints["return"]),
@@ -138,6 +145,9 @@ def definition_from_class(
     display_name: str | None = None,
     description: str | None = None,
     category: str | None = None,
+    icon: str | None = None,
+    search_terms: tuple[str, ...] = (),
+    deprecation: Deprecation | None = None,
     handler: str | None = None,
     input_model: PortSource | None = None,
     output_model: PortSource | Any | None = None,
@@ -170,6 +180,9 @@ def definition_from_class(
         display_name=display_name or target.__name__.replace("_", " ").title(),
         description=description or inspect.getdoc(target),
         category=category,
+        icon=icon,
+        search_terms=search_terms,
+        deprecation=deprecation,
         handler=handler,
         config=tuple(config),
         inputs=inputs,
@@ -187,6 +200,9 @@ def node(
     display_name: str | None = None,
     description: str | None = None,
     category: str | None = None,
+    icon: str | None = None,
+    search_terms: tuple[str, ...] = (),
+    deprecation: Deprecation | None = None,
     handler: str | None = None,
     input_model: PortSource | None = None,
     output_model: PortSource | Any | None = None,
@@ -215,6 +231,9 @@ def node(
                 display_name=display_name,
                 description=description,
                 category=category,
+                icon=icon,
+                search_terms=search_terms,
+                deprecation=deprecation,
                 handler=handler,
                 input_model=input_model,
                 output_model=output_model,
@@ -232,6 +251,9 @@ def node(
                 display_name=display_name,
                 description=description,
                 category=category,
+                icon=icon,
+                search_terms=search_terms,
+                deprecation=deprecation,
                 handler=handler,
                 metadata=metadata,
             )

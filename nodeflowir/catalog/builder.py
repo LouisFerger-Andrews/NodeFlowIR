@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from nodeflowir.catalog.builtins import builtin_catalog_items
 from nodeflowir.catalog.models import (
+    CatalogBehavior,
     CatalogConfigurationField,
     CatalogFieldType,
     CatalogItemKind,
     CatalogPort,
     CatalogPortKind,
+    CatalogPortRole,
+    CatalogPresentation,
     PortCardinality,
     PortDirection,
+    RendererKind,
+    VisualMode,
     WorkflowCatalog,
     WorkflowCatalogItem,
     catalog_type_for_value_kind,
@@ -45,6 +50,7 @@ def _node_config_field(definition_field) -> CatalogConfigurationField:
         provider=definition_field.ui.provider if definition_field.ui is not None else None,
         constraints=definition_field.constraints,
         ui=definition_field.ui,
+        resource=definition_field.resource,
     )
 
 
@@ -76,6 +82,9 @@ def _node_control_port(direction: PortDirection) -> CatalogPort:
             PortCardinality.ONE if direction is PortDirection.INPUT else PortCardinality.MANY
         ),
         required=direction is PortDirection.INPUT,
+        role=(
+            CatalogPortRole.ENTRY if direction is PortDirection.INPUT else CatalogPortRole.DEFAULT
+        ),
         description="Structured NodeStep placement; not a node data contract.",
     )
 
@@ -90,7 +99,22 @@ def node_catalog_item(definition: NodeDefinition) -> WorkflowCatalogItem:
         version=definition.version,
         display_name=definition.display_name or definition.type,
         description=definition.description,
-        category=definition.category or "Custom Nodes",
+        category=definition.category or "General",
+        visual_mode=VisualMode.CANVAS,
+        presentation=CatalogPresentation(
+            name=definition.display_name or definition.type,
+            category=definition.category or "General",
+            description=definition.description,
+            renderer=RendererKind.STANDARD,
+            icon=definition.icon,
+            search_terms=definition.search_terms,
+        ),
+        behavior=CatalogBehavior(
+            supports_retry=True,
+            supports_timeout=True,
+            supports_error_path=True,
+        ),
+        deprecation=definition.deprecation,
         configuration_schema={field.name: _node_config_field(field) for field in definition.config},
         input_ports=(
             _node_control_port(PortDirection.INPUT),

@@ -136,4 +136,5 @@ def test_validates_match_parallel_fan_in_and_error_flow(registry) -> None:
         ),
     )
 
+    assert workflow.body.steps[0].cases[0].id == "case_1"
     assert validate_workflow(workflow, registry).is_valid

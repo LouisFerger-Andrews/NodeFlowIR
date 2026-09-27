@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue, model_validator
 
 from nodeflowir._model import NodeFlowModel
+from nodeflowir.governance.models import ResourceFieldContract
 from nodeflowir.ir.types import PortName, SemanticVersion, TypeSpec, ValueKind
+from nodeflowir.metadata import Deprecation
 from nodeflowir.nodes.fields import BindingId, FieldConstraints, FieldUI
+
+CATALOG_VERSION = "1.0"
 
 
 class CatalogItemKind(StrEnum):
@@ -23,6 +27,25 @@ class CatalogItemKind(StrEnum):
     AGGREGATION = "aggregation"
     VALUE = "value"
     EXECUTION_POLICY = "execution_policy"
+
+
+class VisualMode(StrEnum):
+    """Where a catalog capability is authored in a generic visual tool."""
+
+    CANVAS = "canvas"
+    CONFIGURATION = "configuration"
+    HIDDEN = "hidden"
+
+
+class RendererKind(StrEnum):
+    """Reusable canvas primitives a frontend may implement once."""
+
+    STANDARD = "standard"
+    BRANCH = "branch"
+    SWITCH = "switch"
+    LOOP = "loop"
+    PARALLEL = "parallel"
+    TERMINAL = "terminal"
 
 
 class CatalogFieldType(StrEnum):
@@ -64,7 +87,52 @@ class PortCardinality(StrEnum):
     MANY = "many"
 
 
+class CatalogPortRole(StrEnum):
+    """Semantic purpose of a port, independent of a frontend's styling."""
+
+    DEFAULT = "default"
+    ENTRY = "entry"
+    TRUE = "true"
+    FALSE = "false"
+    CASE = "case"
+    DEFAULT_CASE = "default_case"
+    EACH = "each"
+    COMPLETED = "completed"
+    BRANCH = "branch"
+    ERROR = "error"
+
+
 CatalogName = Annotated[str, Field(min_length=1, max_length=200)]
+IconIdentifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]*$")]
+
+
+class CatalogPresentation(NodeFlowModel):
+    """Semantic display metadata, with no frontend framework or layout details."""
+
+    name: CatalogName
+    category: CatalogName
+    description: str | None = None
+    renderer: RendererKind | None = None
+    icon: IconIdentifier | None = None
+    search_terms: tuple[CatalogName, ...] = ()
+
+    @model_validator(mode="after")
+    def _require_unique_search_terms(self) -> CatalogPresentation:
+        if len(self.search_terms) != len(set(self.search_terms)):
+            raise ValueError("presentation search_terms must be unique")
+        return self
+
+
+class CatalogBehavior(NodeFlowModel):
+    """Generic interaction capabilities that do not alter workflow semantics."""
+
+    supports_retry: bool = False
+    supports_timeout: bool = False
+    supports_error_path: bool = False
+    supports_dynamic_branches: bool = False
+    supports_nested_content: bool = False
+    supports_multiple_control_inputs: bool = False
+    terminal: bool = False
 
 
 class CatalogPort(NodeFlowModel):
@@ -78,6 +146,7 @@ class CatalogPort(NodeFlowModel):
     required: bool = True
     data_type: TypeSpec | None = None
     dynamic: bool = False
+    role: CatalogPortRole = CatalogPortRole.DEFAULT
     description: str | None = None
     ui: dict[str, JsonValue] = Field(default_factory=dict)
 
@@ -91,6 +160,8 @@ class CatalogPort(NodeFlowModel):
             raise ValueError("an output port cannot be required")
         if self.dynamic and self.direction is not PortDirection.OUTPUT:
             raise ValueError("only output ports may be dynamic")
+        if self.kind is CatalogPortKind.DATA and self.role is not CatalogPortRole.DEFAULT:
+            raise ValueError("a data port can only use the default semantic role")
         return self
 
 
@@ -107,6 +178,7 @@ class CatalogConfigurationField(NodeFlowModel):
     provider: BindingId | None = None
     constraints: FieldConstraints | None = None
     ui: FieldUI | None = None
+    resource: ResourceFieldContract | None = None
     capabilities: dict[str, JsonValue] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -142,6 +214,8 @@ class BranchDefinition(NodeFlowModel):
     branch_port_kind: CatalogPortKind = CatalogPortKind.CONTROL
     branch_config_schema: dict[PortName, CatalogConfigurationField] = Field(default_factory=dict)
     default_branch: bool = False
+    label_template: str | None = None
+    branch_id_template: str | None = None
 
     @model_validator(mode="after")
     def _check_shape(self) -> BranchDefinition:
@@ -150,6 +224,8 @@ class BranchDefinition(NodeFlowModel):
             or self.maximum_branches is not None
             or self.branch_config_schema
             or self.default_branch
+            or self.label_template is not None
+            or self.branch_id_template is not None
         ):
             raise ValueError("branch details require dynamic=True")
         if (
@@ -158,6 +234,10 @@ class BranchDefinition(NodeFlowModel):
             and self.minimum_branches > self.maximum_branches
         ):
             raise ValueError("minimum_branches cannot exceed maximum_branches")
+        if self.dynamic and self.branch_id_template is None:
+            raise ValueError("a dynamic branch definition requires branch_id_template")
+        if self.branch_id_template is not None and "{index}" not in self.branch_id_template:
+            raise ValueError("branch_id_template must contain '{index}'")
         return self
 
 
@@ -171,6 +251,10 @@ class WorkflowCatalogItem(NodeFlowModel):
     display_name: CatalogName
     description: str | None = None
     category: CatalogName
+    visual_mode: VisualMode = VisualMode.CONFIGURATION
+    presentation: CatalogPresentation | None = None
+    behavior: CatalogBehavior = Field(default_factory=CatalogBehavior)
+    deprecation: Deprecation | None = None
     configuration_schema: dict[PortName, CatalogConfigurationField] = Field(default_factory=dict)
     input_ports: tuple[CatalogPort, ...] = ()
     output_ports: tuple[CatalogPort, ...] = ()
@@ -180,6 +264,19 @@ class WorkflowCatalogItem(NodeFlowModel):
 
     @model_validator(mode="after")
     def _check_shape(self) -> WorkflowCatalogItem:
+        if self.visual_mode is not VisualMode.HIDDEN and self.presentation is None:
+            raise ValueError("visible catalog items require presentation metadata")
+        if self.presentation is not None:
+            if self.presentation.name != self.display_name:
+                raise ValueError("presentation name must match display_name")
+            if self.presentation.category != self.category:
+                raise ValueError("presentation category must match category")
+            if self.presentation.description != self.description:
+                raise ValueError("presentation description must match description")
+            if self.visual_mode is VisualMode.CANVAS and self.presentation.renderer is None:
+                raise ValueError("canvas catalog items require a renderer")
+            if self.visual_mode is not VisualMode.CANVAS and self.presentation.renderer is not None:
+                raise ValueError("only canvas catalog items may declare a renderer")
         ports = (*self.input_ports, *self.output_ports)
         port_ids = [port.id for port in ports]
         if len(port_ids) != len(set(port_ids)):
@@ -208,13 +305,18 @@ class WorkflowCatalogItem(NodeFlowModel):
                 port.kind is not self.branch_definition.branch_port_kind for port in dynamic_outputs
             ):
                 raise ValueError("dynamic output port kind must match the branch definition")
+            if not self.behavior.supports_dynamic_branches:
+                raise ValueError("dynamic branch definitions require supports_dynamic_branches")
+        if self.behavior.terminal and self.output_ports:
+            raise ValueError("terminal catalog items cannot have output ports")
         return self
 
 
 class WorkflowCatalog(NodeFlowModel):
     """The complete serializable catalog a backend may expose through its API."""
 
-    schema_version: str = "1.0"
+    schema_version: Literal["1.0"] = CATALOG_VERSION
+    catalog_version: Literal["1.0"] = CATALOG_VERSION
     items: tuple[WorkflowCatalogItem, ...]
 
     @model_validator(mode="after")
@@ -228,6 +330,20 @@ class WorkflowCatalog(NodeFlowModel):
         """Return deterministically ordered entries in one semantic family."""
 
         return tuple(item for item in self.items if item.kind is kind)
+
+    def by_visual_mode(self, mode: VisualMode) -> tuple[WorkflowCatalogItem, ...]:
+        """Return catalog entries intended for one generic authoring surface."""
+
+        return tuple(item for item in self.items if item.visual_mode is mode)
+
+    def palette_items(self) -> tuple[WorkflowCatalogItem, ...]:
+        """Return visible, non-deprecated entries suitable for a new-item palette."""
+
+        return tuple(
+            item
+            for item in self.items
+            if item.visual_mode is VisualMode.CANVAS and item.deprecation is None
+        )
 
 
 def catalog_type_for_value_kind(kind: ValueKind) -> CatalogFieldType:

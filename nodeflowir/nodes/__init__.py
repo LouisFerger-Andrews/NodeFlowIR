@@ -1,5 +1,6 @@
 """Node contracts, configuration SDK, registries, and application bindings."""
 
+from nodeflowir.governance.models import ResourceFieldContract
 from nodeflowir.nodes.bindings import (
     BindingRegistryError,
     DuplicateBindingError,
@@ -44,6 +45,7 @@ __all__ = [
     "ProviderContext",
     "ProviderOption",
     "ProviderRegistry",
+    "ResourceFieldContract",
     "Select",
     "UnknownNodeDefinitionError",
     "UnknownBindingError",

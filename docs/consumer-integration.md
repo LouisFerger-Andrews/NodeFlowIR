@@ -73,7 +73,7 @@ catalog = flow.build_catalog()
 payload = catalog.model_dump(mode="json")
 ```
 
-It contains built-in IR constructs plus registered application nodes, configuration metadata, data/control ports, provider references, and dynamic branch rules. A backend serializes `payload` through its own API; NodeFlowIR does not implement that API. See [the visual builder catalog contract](catalog-contract.md) for rendering and graph-authoring details.
+It contains built-in IR constructs plus registered application nodes, configuration metadata, data/control ports, provider references, dynamic branch rules, and presentation metadata. A backend serializes `payload` through its own API; NodeFlowIR does not implement that API. A frontend selects generic renderer primitives from `presentation.renderer` and `visual_mode`, rather than branching on workflow type IDs. See [the visual builder catalog contract](catalog-contract.md) and [presentation contract](presentation-contract.md) for rendering and graph-authoring details.
 
 Provider resolution is explicit and async-compatible:
 
@@ -83,6 +83,50 @@ options = await flow.resolve_provider("test_management.suites")
 ```
 
 The application selects when to make this call and supplies authorization, tenancy, or edit context through `ProviderContext` where needed. No provider is refreshed in the background or resolved while building a catalog.
+
+## Revision, resource, and authorization handoff
+
+NodeFlow does not own identities or authorization, but it provides portable
+contracts for the information an application needs to make its own decisions.
+Keep workflow sharing, protected resource access, and execution identity
+separate:
+
+```python
+dependencies = flow.collect_resource_dependencies(workflow)
+
+# Application-owned persistence compares RevisionPrecondition.expected_version
+# with its stored WorkflowRevision before creating a new immutable revision.
+# Application-owned authorization evaluates dependencies for the resolved
+# ExecutionIdentityPolicy before saving, scheduling, or invoking a handler.
+```
+
+`collect_resource_dependencies` only inspects registered node definitions and
+stable configured values; it invokes no provider, handler, permission service,
+or external resource lookup. A structurally valid workflow can therefore still
+be rejected by application authorization at save time or execution time. See
+[access and versioning](access-and-versioning.md) for sharing and scheduled
+execution examples.
+
+## Compatibility and revision inspection
+
+Before accepting a client document, a backend can perform a narrow discovery
+preflight and return its serializable result through its own API:
+
+```python
+compatibility = flow.check_compatibility(payload, catalog_version="1.0")
+if compatibility.is_compatible:
+    workflow = flow.import_workflow(payload)
+
+fingerprint = flow.workflow_fingerprint(workflow)
+changes = flow.diff_workflows(previous_revision, workflow)
+```
+
+Compatibility preflight only checks installed schema-migration support, exact
+registered node contracts, and an optional catalog protocol version. Import
+then applies the normal migration/parser/validator path. Fingerprints and diffs
+are read-only helpers for persistence/concurrency/audit code owned by the
+application; they do not persist revisions or merge edits. See
+[compatibility and revision tools](compatibility.md).
 
 ## Canonical workflow loading and validation
 

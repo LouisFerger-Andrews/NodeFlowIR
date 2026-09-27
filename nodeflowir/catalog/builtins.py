@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from nodeflowir.catalog.models import (
     BranchDefinition,
+    CatalogBehavior,
     CatalogConfigurationField,
     CatalogFieldType,
     CatalogItemKind,
     CatalogPort,
     CatalogPortKind,
+    CatalogPortRole,
+    CatalogPresentation,
     PortCardinality,
     PortDirection,
+    RendererKind,
+    VisualMode,
     WorkflowCatalogItem,
 )
 from nodeflowir.ir.types import TypeSpec, ValueKind
@@ -24,6 +29,24 @@ OBJECT = TypeSpec(kind=ValueKind.OBJECT)
 STRING = TypeSpec(kind=ValueKind.STRING)
 DURATION = TypeSpec(kind=ValueKind.DURATION)
 
+_DEFAULT_ICONS = {
+    CatalogItemKind.EXPRESSION: "function-square",
+    CatalogItemKind.COLLECTION_OPERATION: "list",
+    CatalogItemKind.TRANSFORMATION: "shuffle",
+    CatalogItemKind.AGGREGATION: "chart-no-axes-combined",
+    CatalogItemKind.VALUE: "braces",
+    CatalogItemKind.EXECUTION_POLICY: "settings-2",
+}
+_CANVAS_PRESENTATIONS = {
+    "if": (RendererKind.BRANCH, "git-branch", ("condition", "branch", "decision")),
+    "match": (RendererKind.SWITCH, "list-tree", ("switch", "case", "decision")),
+    "foreach": (RendererKind.LOOP, "repeat-2", ("iterate", "collection")),
+    "repeat": (RendererKind.LOOP, "repeat", ("loop", "bounded")),
+    "parallel": (RendererKind.PARALLEL, "git-fork", ("fan-out", "converge")),
+    "break": (RendererKind.TERMINAL, "circle-stop", ("loop", "exit")),
+    "continue": (RendererKind.TERMINAL, "forward", ("loop", "next iteration")),
+}
+
 
 def _id(kind: CatalogItemKind, type_id: str) -> str:
     return f"{kind.value}:{type_id}"
@@ -34,10 +57,17 @@ def _control_input() -> CatalogPort:
         id="in",
         kind=CatalogPortKind.CONTROL,
         direction=PortDirection.INPUT,
+        role=CatalogPortRole.ENTRY,
     )
 
 
-def _control_output(id: str, label: str | None = None, *, dynamic: bool = False) -> CatalogPort:
+def _control_output(
+    id: str,
+    label: str | None = None,
+    *,
+    dynamic: bool = False,
+    role: CatalogPortRole = CatalogPortRole.DEFAULT,
+) -> CatalogPort:
     return CatalogPort(
         id=id,
         label=label,
@@ -46,6 +76,7 @@ def _control_output(id: str, label: str | None = None, *, dynamic: bool = False)
         cardinality=PortCardinality.MANY,
         required=False,
         dynamic=dynamic,
+        role=role,
     )
 
 
@@ -102,7 +133,21 @@ def _item(
     outputs: tuple[CatalogPort, ...] = (),
     branch_definition: BranchDefinition | None = None,
     capabilities: dict[str, str | bool | int] | None = None,
+    behavior: CatalogBehavior | None = None,
+    icon: str | None = None,
+    search_terms: tuple[str, ...] = (),
 ) -> WorkflowCatalogItem:
+    canvas = _CANVAS_PRESENTATIONS.get(type_id)
+    visual_mode = VisualMode.CANVAS if canvas is not None else VisualMode.CONFIGURATION
+    renderer = canvas[0] if canvas is not None else None
+    default_icon = canvas[1] if canvas is not None else _DEFAULT_ICONS.get(kind)
+    default_search_terms = canvas[2] if canvas is not None else ()
+    behavior = behavior or CatalogBehavior(
+        supports_dynamic_branches=branch_definition is not None and branch_definition.dynamic,
+        supports_nested_content=type_id
+        in {"if", "match", "foreach", "repeat", "parallel", "error_flow"},
+        terminal=type_id in {"break", "continue"},
+    )
     return WorkflowCatalogItem(
         id=_id(kind, type_id),
         kind=kind,
@@ -110,6 +155,16 @@ def _item(
         display_name=display_name,
         description=description,
         category=category,
+        visual_mode=visual_mode,
+        presentation=CatalogPresentation(
+            name=display_name,
+            category=category,
+            description=description,
+            renderer=renderer,
+            icon=icon or default_icon,
+            search_terms=search_terms or default_search_terms,
+        ),
+        behavior=behavior,
         configuration_schema=config or {},
         input_ports=inputs,
         output_ports=outputs,
@@ -170,7 +225,10 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
             "Logic",
             config={"condition": expression},
             inputs=(_control_input(),),
-            outputs=(_control_output("true", "True"), _control_output("false", "False")),
+            outputs=(
+                _control_output("true", "True", role=CatalogPortRole.TRUE),
+                _control_output("false", "False", role=CatalogPortRole.FALSE),
+            ),
             capabilities={"else_if": True, "else": True},
         ),
         _item(
@@ -181,8 +239,8 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
             config={"subject": expression},
             inputs=(_control_input(),),
             outputs=(
-                _control_output("default", "Default"),
-                _control_output("case", "Case", dynamic=True),
+                _control_output("default", "Default", role=CatalogPortRole.DEFAULT_CASE),
+                _control_output("case", "Case", dynamic=True, role=CatalogPortRole.CASE),
             ),
             branch_definition=BranchDefinition(
                 dynamic=True,
@@ -191,6 +249,8 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
                     "case_value": _field(CatalogFieldType.LITERAL, data_type=ANY)
                 },
                 default_branch=True,
+                label_template="Case {value}",
+                branch_id_template="case_{index}",
             ),
         ),
         _item(
@@ -200,7 +260,10 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
             "Logic",
             config={"collection": collection, "id": item_scope},
             inputs=(_control_input(),),
-            outputs=(_control_output("each", "Each"), _control_output("completed", "Completed")),
+            outputs=(
+                _control_output("each", "Each", role=CatalogPortRole.EACH),
+                _control_output("completed", "Completed", role=CatalogPortRole.COMPLETED),
+            ),
         ),
         _item(
             CatalogItemKind.CONTROL_FLOW,
@@ -209,7 +272,10 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
             "Logic",
             config={"times": _field(CatalogFieldType.INTEGER, data_type=INTEGER)},
             inputs=(_control_input(),),
-            outputs=(_control_output("body", "Body"), _control_output("completed", "Completed")),
+            outputs=(
+                _control_output("body", "Body", role=CatalogPortRole.EACH),
+                _control_output("completed", "Completed", role=CatalogPortRole.COMPLETED),
+            ),
             capabilities={"bounded": True, "minimum_times": 1},
         ),
         _item(
@@ -227,10 +293,15 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
             },
             inputs=(_control_input(),),
             outputs=(
-                _control_output("branch", "Branch", dynamic=True),
-                _control_output("completed", "Completed"),
+                _control_output("branch", "Branch", dynamic=True, role=CatalogPortRole.BRANCH),
+                _control_output("completed", "Completed", role=CatalogPortRole.COMPLETED),
             ),
-            branch_definition=BranchDefinition(dynamic=True, minimum_branches=2),
+            branch_definition=BranchDefinition(
+                dynamic=True,
+                minimum_branches=2,
+                label_template="Branch {index}",
+                branch_id_template="branch_{index}",
+            ),
             capabilities={"dynamic_output_ports": True, "minimum_branches": 2},
         ),
         _item(
@@ -264,8 +335,10 @@ def builtin_catalog_items() -> tuple[WorkflowCatalogItem, ...]:
                 )
             },
             inputs=(_control_input(),),
-            outputs=(_control_output("handler", "Handler"),),
+            outputs=(_control_output("handler", "Handler", role=CatalogPortRole.ERROR),),
             capabilities={"attaches_to": "node_step"},
+            icon="triangle-alert",
+            search_terms=("error", "fallback"),
         ),
         _item(
             CatalogItemKind.EXECUTION_POLICY,

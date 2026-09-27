@@ -51,7 +51,7 @@ class NodeInstance(NodeFlowModel):
     type: NodeTypeId
     type_version: SemanticVersion
     label: str | None = Field(default=None, min_length=1, max_length=200)
-    config: dict[str, JsonValue] = Field(default_factory=dict)
+    config: dict[str, JsonValue] = Field(default_factory=dict, max_length=256)
     retry: RetryPolicy | None = None
     timeout: TimeoutPolicy | None = None
-    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict, max_length=256)

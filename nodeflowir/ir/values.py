@@ -58,14 +58,14 @@ class ObjectValue(NodeFlowModel):
     """Construct a JSON object structurally from nested values."""
 
     kind: Literal["object"] = "object"
-    fields: dict[str, Value] = Field(default_factory=dict)
+    fields: dict[str, Value] = Field(default_factory=dict, max_length=1_000)
 
 
 class ArrayValue(NodeFlowModel):
     """Construct a JSON array structurally from nested values."""
 
     kind: Literal["array"] = "array"
-    items: list[Value] = Field(default_factory=list)
+    items: list[Value] = Field(default_factory=list, max_length=10_000)
 
 
 class UnaryOperator(StrEnum):

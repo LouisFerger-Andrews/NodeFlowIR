@@ -6,7 +6,22 @@ import json
 
 from pydantic import BaseModel
 
-from nodeflowir import ConfigField, NodeFlow, Select, Workflow, node
+from nodeflowir import (
+    AccessGrant,
+    ConfigField,
+    ExecutionIdentityMode,
+    ExecutionIdentityPolicy,
+    NodeFlow,
+    ResourceFieldContract,
+    Select,
+    SubjectReference,
+    SubjectType,
+    Workflow,
+    WorkflowAccessPolicy,
+    WorkflowAccessRole,
+    WorkflowDiffKind,
+    node,
+)
 from nodeflowir.serialization import workflow_to_json
 
 
@@ -23,10 +38,17 @@ class ScenarioSuiteOutput(BaseModel):
     version="1.0",
     display_name="Test Suite",
     category="Testing",
+    icon="flask-conical",
     handler="test_management.run_suite",
 )
 class ScenarioTestSuiteNode:
-    suite_id: str = ConfigField(ui=Select(provider="test_management.suites"))
+    suite_id: str = ConfigField(
+        ui=Select(provider="test_management.suites"),
+        resource=ResourceFieldContract(
+            resource_type="test_suite",
+            provider_id="test_management.suites",
+        ),
+    )
     output = ScenarioSuiteOutput
 
 
@@ -140,13 +162,20 @@ def test_library_contracts_converge_without_invoking_application_code() -> None:
     test_suite = catalog_items["node:qa.test-suite@1.0"]
     condition = catalog_items["control_flow:if"]
     assert test_suite.configuration_schema["suite_id"].provider == "test_management.suites"
+    assert test_suite.presentation is not None
+    assert test_suite.presentation.renderer == "standard"
+    assert test_suite.presentation.icon == "flask-conical"
+    assert test_suite.visual_mode == "canvas"
     assert {port.id for port in test_suite.input_ports} >= {"$control.in"}
     assert {port.id for port in condition.output_ports} == {"true", "false"}
+    assert condition.presentation is not None
+    assert condition.presentation.renderer == "branch"
 
     canonical = Workflow.model_validate(_workflow_payload())
     assert flow.validate(canonical).is_valid
 
     restored = flow.load_workflow(json.loads(workflow_to_json(canonical)))
+    assert flow.workflow_fingerprint(restored) == flow.workflow_fingerprint(canonical)
     formatted = flow.format_dsl(restored)
     reparsed = flow.parse_dsl(formatted)
     # Collection predicate scope IDs are lexical binders. The formatter emits
@@ -165,6 +194,37 @@ def test_library_contracts_converge_without_invoking_application_code() -> None:
     )
     assert {item.id for item in context.catalog.items} == set(catalog_items)
     assert flow.validate_authored_workflow(reparsed, authoring_context=context).is_valid
+
+    revision = restored.model_copy(
+        update={
+            "workflow_version": 2,
+            "nodes": [
+                restored.nodes[0].model_copy(update={"config": {"suite_id": "suite_456"}}),
+                *restored.nodes[1:],
+            ],
+        }
+    )
+    diff = flow.diff_workflows(restored, revision)
+    assert {change.kind for change in diff.changes} >= {
+        WorkflowDiffKind.WORKFLOW_VERSION_CHANGED,
+        WorkflowDiffKind.NODE_CONFIG_CHANGED,
+    }
+
+    dependencies = flow.collect_resource_dependencies(restored)
+    assert dependencies[0].resource.resource_type == "test_suite"
+    assert dependencies[0].resource.resource_id == "suite_123"
+    access = WorkflowAccessPolicy(
+        owner=SubjectReference(type=SubjectType.USER, id="user_alice"),
+        entries=(
+            AccessGrant(
+                subject=SubjectReference(type=SubjectType.USER, id="user_bob"),
+                role=WorkflowAccessRole.EDITOR,
+            ),
+        ),
+    )
+    execution = ExecutionIdentityPolicy(mode=ExecutionIdentityMode.OWNER)
+    assert access.entries[0].role is WorkflowAccessRole.EDITOR
+    assert execution.mode is ExecutionIdentityMode.OWNER
 
     handler = flow.resolve_handler(restored.nodes[0])
     assert handler is run_suite

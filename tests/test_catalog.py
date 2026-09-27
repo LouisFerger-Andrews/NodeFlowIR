@@ -12,6 +12,7 @@ from nodeflowir.catalog import (
     CatalogItemKind,
     CatalogPort,
     CatalogPortKind,
+    CatalogPresentation,
     PortCardinality,
     PortDirection,
     WorkflowCatalog,
@@ -240,6 +241,7 @@ def test_catalog_models_reject_invalid_ports_configuration_and_branches() -> Non
             type="invalid",
             display_name="Invalid",
             category="Tests",
+            presentation=CatalogPresentation(name="Invalid", category="Tests"),
             input_ports=(
                 CatalogPort(
                     id="value",
@@ -265,6 +267,7 @@ def test_catalog_models_reject_invalid_ports_configuration_and_branches() -> Non
             type="invalid",
             display_name="Invalid",
             category="Tests",
+            presentation=CatalogPresentation(name="Invalid", category="Tests"),
         )
     with pytest.raises(ValidationError, match="dynamic output ports require a branch definition"):
         WorkflowCatalogItem(
@@ -273,6 +276,7 @@ def test_catalog_models_reject_invalid_ports_configuration_and_branches() -> Non
             type="invalid",
             display_name="Invalid",
             category="Tests",
+            presentation=CatalogPresentation(name="Invalid", category="Tests"),
             input_ports=(
                 CatalogPort(
                     id="in",
@@ -303,6 +307,7 @@ def test_catalog_models_reject_invalid_ports_configuration_and_branches() -> Non
         type="literal",
         display_name="Literal",
         category="Values",
+        presentation=CatalogPresentation(name="Literal", category="Values"),
     )
     with pytest.raises(ValidationError, match="item ids must be unique"):
         WorkflowCatalog(items=(item, item))

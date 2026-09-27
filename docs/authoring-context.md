@@ -24,6 +24,8 @@ built-in IR constructs ──┘                     └─> authoring context �
 
 If a node or construct is absent from the catalog, it is not available to either author. A new registered node appears in both places through the same catalog build.
 
+Catalog presentation metadata is intentionally ignored by structured authoring: it helps a visual builder choose generic renderers, but it is not part of the canonical `Workflow` schema and does not alter AI or DSL semantics.
+
 ## `AuthoringContext`
 
 `AuthoringContext` is a Pydantic model intended to be serialized, passed as dependency/context data, or otherwise supplied to an application-owned structured author. It contains:

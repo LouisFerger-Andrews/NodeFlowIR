@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from nodeflowir._model import NodeFlowModel
 from nodeflowir.ir.types import Identifier
@@ -15,7 +15,7 @@ from nodeflowir.ir.values import Value
 class FlowBlock(NodeFlowModel):
     """An ordered sequence of control-flow steps."""
 
-    steps: list[FlowStep] = Field(min_length=1)
+    steps: list[FlowStep] = Field(min_length=1, max_length=1_000)
 
 
 class NodeStep(NodeFlowModel):
@@ -39,13 +39,14 @@ class IfStep(NodeFlowModel):
     kind: Literal["if"] = "if"
     condition: Value
     then: FlowBlock
-    else_if: list[ConditionalBranch] = Field(default_factory=list)
+    else_if: list[ConditionalBranch] = Field(default_factory=list, max_length=64)
     else_body: FlowBlock | None = None
 
 
 class MatchCase(NodeFlowModel):
-    """One value-matching branch in a ``match`` step."""
+    """One stable, value-matching branch in a ``match`` step."""
 
+    id: Identifier | None = None
     value: Value
     body: FlowBlock
 
@@ -55,8 +56,20 @@ class MatchStep(NodeFlowModel):
 
     kind: Literal["match"] = "match"
     subject: Value
-    cases: list[MatchCase] = Field(min_length=1)
+    cases: list[MatchCase] = Field(min_length=1, max_length=256)
     default: FlowBlock | None = None
+
+    @model_validator(mode="after")
+    def _require_unique_case_ids(self) -> MatchStep:
+        cases = [
+            case if case.id is not None else case.model_copy(update={"id": f"case_{index}"})
+            for index, case in enumerate(self.cases, start=1)
+        ]
+        case_ids = [case.id for case in cases]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("match case ids must be unique within a match step")
+        object.__setattr__(self, "cases", cases)
+        return self
 
 
 class ForeachStep(NodeFlowModel):
@@ -94,7 +107,7 @@ class ParallelStep(NodeFlowModel):
 
     kind: Literal["parallel"] = "parallel"
     id: Identifier
-    branches: list[ParallelBranch] = Field(min_length=2)
+    branches: list[ParallelBranch] = Field(min_length=2, max_length=256)
     convergence: ConvergenceStrategy = ConvergenceStrategy.ALL
 
 

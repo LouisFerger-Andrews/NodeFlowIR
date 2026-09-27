@@ -12,7 +12,13 @@ class SuiteResult(BaseModel):
 def test_node_decorator_derives_and_registers_a_contract() -> None:
     registry = NodeRegistry()
 
-    @node("qa.test-suite", registry=registry)
+    @node(
+        "qa.test-suite",
+        registry=registry,
+        category="Testing",
+        icon="flask-conical",
+        search_terms=("quality", "regression"),
+    )
     async def run_test_suite(suite_id: str, retry: int = 0) -> SuiteResult:
         raise NotImplementedError
 
@@ -23,3 +29,5 @@ def test_node_decorator_derives_and_registers_a_contract() -> None:
     assert not definition.inputs["retry"].required
     assert definition.inputs["suite_id"].type.kind is ValueKind.STRING
     assert definition.outputs["passed"].type.kind is ValueKind.BOOLEAN
+    assert definition.icon == "flask-conical"
+    assert definition.search_terms == ("quality", "regression")

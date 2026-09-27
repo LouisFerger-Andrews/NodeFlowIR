@@ -75,8 +75,8 @@ class TypeSpec(NodeFlowModel):
     kind: ValueKind
     nullable: bool = False
     items: TypeSpec | None = None
-    fields: dict[PortName, TypeSpec] = Field(default_factory=dict)
-    enum_values: tuple[JsonValue, ...] | None = Field(default=None, min_length=1)
+    fields: dict[PortName, TypeSpec] = Field(default_factory=dict, max_length=1_000)
+    enum_values: tuple[JsonValue, ...] | None = Field(default=None, min_length=1, max_length=1_000)
 
     @model_validator(mode="after")
     def _check_structure(self) -> TypeSpec:

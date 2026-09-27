@@ -14,7 +14,7 @@ The catalog is not another workflow representation and it does not make built-in
 
 > **NodeFlowIR defines semantics and structural contracts; the frontend defines presentation and interaction.**
 
-Consequently, catalog entries deliberately contain no colors, icons, coordinates, dimensions, layout algorithm, animation, or frontend-framework concepts.
+Consequently, catalog entries deliberately contain no colors, coordinates, dimensions, layout algorithm, animation, or frontend-framework concepts. They may contain a semantic icon identifier; the frontend maps that identifier to its own icon library.
 
 ## Building and serializing a catalog
 
@@ -29,7 +29,7 @@ payload = catalog.model_dump(mode="json")
 
 `build_workflow_catalog` is deterministic. Built-in entries come first, and custom node entries are ordered by type and version. It never invokes an execution handler or a dynamic option provider.
 
-Each entry has a globally unique catalog `id`, a semantic `kind`, stable `type`, optional definition `version`, display metadata, a `configuration_schema`, input/output `ports`, and optional branch metadata. The current catalog kinds are `node`, `control_flow`, `expression`, `collection_operation`, `transformation`, `aggregation`, `value`, and `execution_policy`.
+The catalog has a `catalog_version` protocol field (`"1.0"` today), in addition to its retained schema-1.0 `schema_version` compatibility field. Each entry has a globally unique catalog `id`, a semantic `kind`, stable `type`, optional definition `version`, display metadata, a `presentation` object, `visual_mode`, generic `behavior`, optional `deprecation` metadata, a `configuration_schema`, input/output `ports`, and optional branch metadata. The current catalog kinds are `node`, `control_flow`, `expression`, `collection_operation`, `transformation`, `aggregation`, `value`, and `execution_policy`. See [the presentation contract](presentation-contract.md) for renderer selection and palette behavior.
 
 Every custom-node entry also has the reserved `$control.in` and `$control.out` ports. They describe the generic `NodeStep` placement available to all executable nodes; declared node input/output ports remain data ports. The `$` prefix prevents a collision with application node port names, which use the portable IR port-name grammar. A visual editor can use those structural ports for sequence and branching while mapping the result back into `FlowBlock` / `NodeStep` models rather than inventing graph-edge semantics.
 
@@ -42,6 +42,13 @@ For example, an `if` entry has structural, rather than visual, branch metadata:
   "type": "if",
   "display_name": "If / Else",
   "category": "Logic",
+  "visual_mode": "canvas",
+  "presentation": {
+    "name": "If / Else",
+    "category": "Logic",
+    "renderer": "branch",
+    "icon": "git-branch"
+  },
   "configuration_schema": {
     "condition": {
       "type": "expression",
@@ -53,10 +60,10 @@ For example, an `if` entry has structural, rather than visual, branch metadata:
       }
     }
   },
-  "input_ports": [{"id": "in", "kind": "control", "direction": "input"}],
+  "input_ports": [{"id": "in", "kind": "control", "direction": "input", "role": "entry"}],
   "output_ports": [
-    {"id": "true", "label": "True", "kind": "control", "direction": "output"},
-    {"id": "false", "label": "False", "kind": "control", "direction": "output"}
+    {"id": "true", "label": "True", "kind": "control", "direction": "output", "role": "true"},
+    {"id": "false", "label": "False", "kind": "control", "direction": "output", "role": "false"}
   ]
 }
 ```
@@ -84,6 +91,7 @@ Ports contain only structural connection information:
 | `required` | Whether an input must receive a binding for the construct or node contract to be valid. |
 | `data_type` | Required for data ports; a portable `TypeSpec`. |
 | `dynamic` | An output port whose branches are user-configurable. |
+| `role` | A semantic control-path purpose, such as `true`, `case`, `each`, or `completed`. |
 
 Control-flow items retain their distinct IR semantics:
 
@@ -92,7 +100,7 @@ Control-flow items retain their distinct IR semantics:
 - `match` has dynamic `case` outputs, a `default` output, and a case-branch schema requiring `case_value`.
 - `retry` and `timeout` are execution-policy entries that attach to a node instance; they are not executable frontend components.
 
-The catalog therefore lets an editor add and remove parallel or match branches without pretending that a fixed visual port count is part of the semantics.
+Dynamic branch definitions include stable ID templates (`case_{index}` and `branch_{index}`) for a frontend to use when it creates canonical `MatchCase.id` and `ParallelBranch.id` records. The catalog therefore lets an editor add and remove parallel or match branches without pretending that a fixed visual port count or visual ordering is part of the semantics.
 
 Configuration field names use the corresponding canonical model names when they map directly to IR data. For example, `RetryPolicy` exposes `max_attempts`, `delay_seconds`, `backoff`, and `max_delay_seconds`; `TimeoutPolicy` exposes `timeout_seconds`. No DSL field-name translation is required for visual authoring.
 
@@ -119,6 +127,15 @@ A custom node entry carries a provider *reference*, not the provider's changing 
 The application backend resolves `test_management.suites` when the user opens or edits the node and returns current `{value, label}` options through an application-owned API. A workflow instance stores only a selected stable value such as `"suite_123"`. Adding a Test Management suite changes provider results, not this definition or existing workflow documents.
 
 The same boundary applies to execution: a node definition may name the opaque handler reference `test_management.run_suite`, but the application owns registration, invocation, authorization, and business implementation. The frontend has no need to invoke or understand it.
+
+## Deprecation and palette discovery
+
+`deprecation` metadata can mark a still-supported catalog item with an optional
+message and stable replacement identifier. A backend should serialize the full
+catalog so existing workflows remain displayable. `catalog.palette_items()` is
+the safe default for a new-item palette: it returns only canvas-visible,
+non-deprecated entries. This is discovery guidance, not an automatic workflow
+migration or a semantic validation failure.
 
 ## Frontend authoring sequence
 

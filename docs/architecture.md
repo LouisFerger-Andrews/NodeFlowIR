@@ -138,17 +138,39 @@ Only nodes earlier in the same lexical sequence are visible to a later expressio
 
 Validation intentionally does not execute a node, resolve a UI provider, confirm a dynamic option is currently available, invoke a handler, or determine infrastructure capabilities. Those require application context outside the generic IR. Configuration rules declared in a generic `NodeDefinition` are validated; any additional application schema is not.
 
-## Versioning and serialization
+## Versioning, ownership, and serialization
 
 `schema_version` identifies the NodeFlowIR document format and is currently exactly `"1.0"`. `workflow_version` is a positive integer revision of one workflow. They are independent: updating a workflow revision does not imply an IR migration.
 
 The JSON entrypoint serializes the Pydantic model directly. When loading a different schema version, the caller must supply an explicit `MigrationRegistry` path. The package never silently coerces an incompatible document into the current format.
+
+The schema-1.0 `Workflow.id` is the stable workflow-document identity and has
+the explicit Python alias `workflow_id`. `WorkflowRevision` records an
+immutable revision identity and optional lineage, while `RevisionPrecondition`
+is the portable optimistic-concurrency expectation a consumer compares against
+its stored current version. Neither model stores revision history or mutates a
+workflow.
+
+Access policy and execution policy deliberately remain separate from a
+semantic workflow revision. `SubjectReference`, `WorkflowAccessPolicy`, and
+`ExecutionIdentityPolicy` describe opaque sharing and run-as intent; a
+consumer may change access state without changing the workflow logic revision.
+An `executor` grant can be expressed separately from viewer/editor grants.
+NodeFlowIR neither resolves a subject nor makes a permission decision.
+
+Node configuration fields can be annotated with `ResourceFieldContract`. The
+pure `collect_resource_dependencies` helper derives stable
+`ResourceDependency` records from registered definitions and configured IDs.
+It performs no provider calls, resource lookups, or authorization checks. See
+[access and versioning](access-and-versioning.md) for the full boundary.
 
 ## Ownership boundary
 
 NodeFlowIR owns generic IR semantics, contracts, configuration metadata and UI hints, provider/handler references and explicit registries, references, transformations, control flow, validation, and serialization.
 
 Consuming applications own domain node implementations, registry composition, dynamic provider implementations and authorization/freshness policy, handler invocation, runtime/evaluator behavior, retries and timeout enforcement, error-state persistence, scheduler policy, identity, authorization, tenancy, APIs, UI, infrastructure, and integrations. This includes QA test execution, tickets, SAP, agents, databases, and Kubernetes.
+
+> **NodeFlowIR can describe ownership, revision identity, sharing intent, resource dependencies, and execution authorization requirements; the consuming application owns identity, persistence, authorization decisions, and enforcement.**
 
 The deployment boundary is therefore deliberately one-way:
 
@@ -169,9 +191,9 @@ registered node contracts ┘                                      │
                                                                     └─> NodeFlowIR → validation
 ```
 
-Catalogs describe semantic kind/type, configuration field contracts, portable data types, control/data ports, cardinality, and dynamic branch rules. They do not describe a visual style, component library, coordinate system, or layout. Dynamic configuration fields keep only an application provider identifier, and node definitions keep only an optional handler identifier; resolving live options and executing business code remain application-owned concerns.
+Catalogs describe semantic kind/type, configuration field contracts, portable data types, control/data ports, cardinality, dynamic branch rules, and framework-neutral presentation metadata. A `visual_mode` separates canvas primitives from nested configuration capabilities; canvas entries select a small generic renderer vocabulary instead of a frontend type-specific component. Catalogs do not describe a visual style, component library, coordinate system, or layout. Dynamic configuration fields keep only an application provider identifier, and node definitions keep only an optional handler identifier; resolving live options and executing business code remain application-owned concerns.
 
-See [the visual builder catalog contract](catalog-contract.md) for serialization, context-aware references, ports, branch metadata, and the frontend authoring sequence.
+See [the visual builder catalog contract](catalog-contract.md) for serialization, context-aware references, ports, branch metadata, and the frontend authoring sequence; see [the presentation contract](presentation-contract.md) for generic renderer metadata.
 
 ## Shared AI authoring contract
 
@@ -209,3 +231,24 @@ NodeFlow → catalog / validate / DSL / authoring context / provider lookup / ha
 ```
 
 The facade intentionally has no scheduler, execution state, evaluator, input-resolution implementation, event loop, persistence, or API layer. Workflow definitions describe what should happen; an application runtime combines a validated node instance with its own concrete inputs and invokes the resolved handler under its own policy. See [the consumer integration guide](consumer-integration.md) for startup and handoff details.
+
+## Compatibility, bounded input, and revision inspection
+
+The IR imposes intentionally generous structural limits to reject pathological
+untrusted documents cleanly: at most 1,000 nodes, 5,000 data connections,
+1,000 steps per block, 256 match/parallel branches, 256 configuration fields
+per node instance, 10,000 items in a constructed array, and 64 nested model/
+document levels. These are input-safety limits, not scheduling or execution
+limits; consuming applications may impose stricter local policy.
+
+`check_workflow_compatibility` is a read-only preflight for explicit schema
+migrations, registered node contract versions, and an optional catalog protocol
+version. It deliberately stops before full semantic validation. The canonical
+validator remains the one authority for workflow meaning.
+
+`workflow_fingerprint` derives a deterministic SHA-256 digest from semantic
+workflow data only, while `workflow_diff` provides structured revision changes
+for application-owned history/audit experiences. `Deprecation` metadata lets a
+registered node remain loadable while clients stop offering it for new authoring.
+These contracts add no revision store, permission engine, workflow executor, or
+application-specific behavior. See [compatibility and revision tools](compatibility.md).

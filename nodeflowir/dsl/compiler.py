@@ -253,10 +253,11 @@ class Compiler:
                         subject=self._compile_expression(statement.subject, environment),
                         cases=[
                             MatchCase(
+                                id=f"case_{index}",
                                 value=self._compile_expression(value, environment),
                                 body=self._compile_block(case, environment.child()),
                             )
-                            for value, case in statement.cases
+                            for index, (value, case) in enumerate(statement.cases, start=1)
                         ],
                         default=(
                             self._compile_block(statement.default, environment.child())
@@ -332,7 +333,7 @@ class Compiler:
                 branch_statement.alias
                 if isinstance(branch_statement, ast.RunSyntax)
                 and branch_statement.alias is not None
-                else self._generated_id(f"branch_{index}")
+                else f"branch_{index}"
             )
             branches.append(ParallelBranch(id=branch_id, body=body))
         if len(branches) < 2:

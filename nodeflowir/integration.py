@@ -14,7 +14,9 @@ from nodeflowir.authoring import (
     validate_authored_workflow,
 )
 from nodeflowir.catalog import WorkflowCatalog, build_workflow_catalog
+from nodeflowir.compatibility import CompatibilityResult, check_workflow_compatibility
 from nodeflowir.dsl import compile_dsl, format_workflow
+from nodeflowir.governance import ResourceDependency, collect_resource_dependencies
 from nodeflowir.ir import NodeInstance, Workflow
 from nodeflowir.nodes import (
     ExecutionHandlerRegistry,
@@ -28,6 +30,9 @@ from nodeflowir.nodes import (
 from nodeflowir.nodes.bindings import DynamicProvider, ExecutionHandler
 from nodeflowir.serialization import (
     MigrationRegistry,
+    WorkflowDiff,
+    workflow_diff,
+    workflow_fingerprint,
     workflow_from_document,
     workflow_from_json,
 )
@@ -152,6 +157,38 @@ class NodeFlow:
             raise WorkflowValidationError(result)
         return workflow
 
+    def import_workflow(self, payload: WorkflowPayload) -> Workflow:
+        """Alias the normal schema-aware load and validation entry point."""
+
+        return self.load_workflow(payload)
+
+    def export_workflow(self, workflow: Workflow) -> dict[str, JsonValue]:
+        """Return the canonical JSON-compatible document for application storage or APIs."""
+
+        return workflow.model_dump(mode="json")
+
+    def check_compatibility(
+        self, payload: WorkflowPayload, *, catalog_version: str | None = None
+    ) -> CompatibilityResult:
+        """Discover schema/node/catalog support before normal parsing and validation."""
+
+        return check_workflow_compatibility(
+            payload,
+            registry=self.nodes,
+            migrations=self.migrations,
+            catalog_version=catalog_version,
+        )
+
+    def workflow_fingerprint(self, workflow: Workflow) -> str:
+        """Fingerprint deterministic workflow semantics without external state."""
+
+        return workflow_fingerprint(workflow)
+
+    def diff_workflows(self, before: Workflow, after: Workflow) -> WorkflowDiff:
+        """Return a structured, read-only comparison of two workflow revisions."""
+
+        return workflow_diff(before, after)
+
     def parse_dsl(self, source: str) -> Workflow:
         """Compile DSL source to the same validated canonical ``Workflow`` model."""
 
@@ -214,3 +251,8 @@ class NodeFlow:
                 ),
                 handler_id=definition.handler,
             ) from error
+
+    def collect_resource_dependencies(self, workflow: Workflow) -> tuple[ResourceDependency, ...]:
+        """Inspect declared protected resources without resolving or authorizing them."""
+
+        return collect_resource_dependencies(workflow, self.nodes)

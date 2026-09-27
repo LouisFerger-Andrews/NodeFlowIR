@@ -6,6 +6,10 @@ NodeFlowIR is a reusable Python library that defines the canonical, typed Interm
 
 > **NodeFlowIR defines workflow semantics and structural contracts; consuming applications own execution and infrastructure.**
 
+> **NodeFlowIR can describe ownership, revision identity, sharing intent, resource dependencies, and execution authorization requirements; the consuming application owns identity, persistence, authorization decisions, and enforcement.**
+
+> **The frontend should hard-code renderer primitives, not workflow types.**
+
 This boundary gives visual builders, DSLs, and AI-generated workflows one predictable semantic target without turning NodeFlowIR into a general-purpose programming language. Built-in logic is structural, bounded, typed, serializable, and inspectable. Domain work—running tests, creating tickets, calling APIs, or invoking agents—remains in application-owned nodes.
 
 ```text
@@ -34,6 +38,7 @@ from nodeflowir import NodeDefinition, NodeFlow, NodeInstance, Workflow, node
 
 A `Workflow` is a versioned document with:
 
+- `id` / `workflow_id`: the stable workflow-document identity (`id` is the schema-1.0 JSON field; `workflow_id` is its explicit Python alias).
 - `schema_version`: the NodeFlowIR document format version (`"1.0"` today).
 - `workflow_version`: a positive integer revision of this workflow, independent of the schema format.
 - Declared workflow inputs and typed literal constants.
@@ -355,6 +360,50 @@ round_tripped = workflow_from_json(document)
 
 Loading a different `schema_version` requires a registered explicit migration. A workflow revision changing from 12 to 13 does not require an IR schema migration.
 
+## Compatibility and revision tools
+
+The catalog carries an explicit `catalog_version` (`"1.0"` today) for backend/
+frontend discovery compatibility. `flow.check_compatibility(payload,
+catalog_version=...)` is a read-only preflight for schema migration support,
+registered node versions, and that optional catalog protocol value; it does not
+replace canonical validation.
+
+`workflow_fingerprint(workflow)` provides a stable SHA-256 digest of workflow
+semantics, independent of JSON whitespace, revision numbers, display labels,
+and opaque metadata. `workflow_diff(before, after)` returns structured changes
+for workflow revisions (nodes, configuration, connections, conditions, inputs,
+outputs, and flow shape). `flow.import_workflow` / `flow.export_workflow`
+provide explicit canonical JSON mapping entry points.
+
+Node definitions can use `Deprecation(message=..., replacement=...)` without
+becoming unloadable. The metadata remains in the catalog for existing workflows
+while `catalog.palette_items()` omits deprecated visual entries from a new-item
+palette. See [compatibility and revision tools](docs/compatibility.md).
+
+## Ownership, sharing, resource access, and execution authority
+
+NodeFlowIR supplies portable, opaque contracts for workflow identity and
+revision lineage (`WorkflowIdentity`, `WorkflowRevision`, and
+`RevisionPrecondition`), sharing intent (`SubjectReference`, `AccessGrant`, and
+`WorkflowAccessPolicy`), execution authority intent
+(`ExecutionIdentityPolicy`), and declared external resource dependencies
+(`ResourceReference` and `ResourceDependency`). It never looks up subjects,
+persists revisions, makes permission decisions, or executes with an identity.
+
+```text
+Workflow access:  who may view/edit/share/execute the definition?
+Resource access:  may the selected authority use a referenced external resource?
+Execution identity: whose authority is evaluated at execution time?
+```
+
+These are deliberately separate. Sharing a workflow with Bob does not give
+Bob access to its Test Suite, nor does it silently delegate Alice's authority.
+Node configuration fields can be marked with `ResourceFieldContract`; a
+backend can then call `flow.collect_resource_dependencies(workflow)` without
+external I/O to prepare its own save, schedule, audit, or runtime authorization
+checks. See [access and versioning](docs/access-and-versioning.md) for the
+models, optimistic-concurrency contract, and the owner/caller/service examples.
+
 ## Visual Builder Integration Contract
 
 NodeFlowIR can build a frontend-neutral `WorkflowCatalog` that combines registered application nodes with the built-in IR constructs already supported by the package.
@@ -369,7 +418,7 @@ Frontend Visual Builder
 
 > **NodeFlowIR defines semantics and structural contracts; the frontend defines presentation and interaction.**
 
-The catalog lets a backend expose a dynamic “add workflow element” menu without frontend code knowing every node type or built-in operation in advance. Its entries have a semantic kind/type, display metadata, a configuration schema, typed data/control ports, requiredness, cardinality, and (where necessary) dynamic branch definitions. It intentionally has no colors, icons, coordinates, dimensions, or frontend-framework concepts.
+The catalog lets a backend expose a dynamic “add workflow element” menu without frontend code knowing every node type or built-in operation in advance. Its entries have semantic kind/type, presentation metadata, a configuration schema, typed data/control ports, requiredness, cardinality, and (where necessary) dynamic branch definitions. It intentionally has no colors, coordinates, dimensions, layout rules, or frontend-framework concepts. Icons are optional semantic identifiers that a frontend maps to its own icon library.
 
 ```python
 from nodeflowir import build_workflow_catalog
@@ -394,6 +443,14 @@ The normal frontend sequence is:
 6. Submit the IR to the backend for validation.
 
 The frontend does not import this package, execute handlers, or generate DSL. A visual shape such as `Test Suite → If / Else → Ticket / Report` is a projection of catalog metadata and canonical IR structure; its appearance and interaction design remain entirely frontend-owned. See [the visual builder catalog contract](docs/catalog-contract.md) for the complete API-neutral contract.
+
+## Metadata-driven visual rendering
+
+> **Workflow types must not be hard-coded into the frontend. NodeFlowIR provides semantic and presentation metadata; the frontend implements a small reusable vocabulary of generic renderers.**
+
+Catalog items classify themselves as `canvas` or `configuration` capabilities. Canvas items carry a reusable renderer kind—currently `standard`, `branch`, `switch`, `loop`, `parallel`, or `terminal`—plus a name, category, optional icon/search terms, semantic port roles, branch templates, and generic behavior flags. Operators, transforms, values, policies, and attached error flow remain discoverable configuration capabilities because they are nested structures in the canonical IR rather than independent workflow nodes.
+
+This lets a frontend group palette items by catalog category, choose a renderer from metadata, create handles from typed ports, and generate forms from the configuration schema. A normal registered node automatically uses `standard`; adding it requires no type-specific frontend component. NodeFlowIR does not define shape, CSS, position, color, or interaction details. See [the presentation contract](docs/presentation-contract.md).
 
 ## Authoring Consistency
 
@@ -511,6 +568,7 @@ nodeflowir/
 ├── nodes/               # SDK, contracts, config/UI fields, registries, bindings
 ├── catalog/             # Unified frontend-facing built-in and custom-node metadata
 ├── authoring/           # Shared structured context and optional dynamic validation overlay
+├── governance/          # Portable revision, access-intent, and resource-dependency contracts
 ├── integration.py        # Explicit consumer facade composing existing subsystems
 ├── dsl/                 # Lexer, parser, syntax AST, compiler, deterministic formatter
 ├── validation/          # Semantic type/reference/control-flow validation
@@ -519,8 +577,11 @@ docs/
 ├── architecture.md
 ├── authoring-context.md
 ├── catalog-contract.md
+├── compatibility.md
 ├── consumer-integration.md
-└── language-spec.md
+├── language-spec.md
+├── presentation-contract.md
+└── access-and-versioning.md
 tests/
 ```
 
@@ -529,10 +590,12 @@ tests/
 This repository currently implements:
 
 - Pydantic v2 models for schema-versioned workflows and independently versioned workflow revisions.
+- Portable ownership, sharing, execution-identity, immutable-revision, optimistic-concurrency, and protected-resource dependency contracts. They describe intent only; consuming applications resolve identities/resources and enforce authorization.
 - Versioned node contracts, configured node instances, an explicit in-memory registry, and a class/function Node SDK.
 - Typed configuration fields with defaults, portable constraints, enum support, and frontend-neutral UI metadata.
 - Explicit dynamic-option provider and execution-handler registries. Providers return stable value/label metadata; handlers can only be registered and resolved, never executed by NodeFlowIR.
 - A serializable unified workflow catalog for built-in IR constructs and registered custom node definitions, including semantic configuration fields, typed control/data ports, dynamic branch metadata, and local port-compatibility checks.
+- A metadata-driven frontend presentation contract: reusable renderer kinds, `canvas`/`configuration` classification, semantic icon/search metadata, port roles, typed behavior flags, and deterministic dynamic-branch ID templates.
 - A framework-neutral shared authoring context that reuses the unified catalog and canonical `Workflow` JSON Schema, accepts explicitly supplied dynamic provider options, supports catalog filtering, and optionally validates selected provider IDs through the existing validation result model.
 - An explicit, instance-local `NodeFlow` integration facade for registration, catalog discovery, canonical workflow loading/validation, DSL and authoring access, provider lookup, and non-executing handler resolution.
 - Static node-instance validation against registered definitions, including configuration field names, required values, types, constraints, enums, node versions, and workflow input ports.
@@ -541,6 +604,7 @@ This repository currently implements:
 - Typed collection transforms, aggregation, data composition, fallback, conversion, date/datetime/duration operations, and allowed-value sets.
 - Structured `if`, `match`, `foreach`, bounded `repeat`, loop control, parallel convergence, generic error paths, retry declarations, and timeout declarations.
 - Non-executing semantic validation and deterministic JSON round trips with explicit schema migration support.
+- Read-only schema/node/catalog compatibility discovery, safe node/catalog deprecation metadata, deterministic semantic workflow fingerprints, and structured workflow revision diffs.
 - A flake-based development shell and unit tests for workflow semantics.
 
 It does **not** implement PydanticAI integration, a visual builder, a node executor, provider or handler business implementations, scheduler, persistence layer, application APIs, frontend, Kubernetes integration, arbitrary embedded programming languages, or business-specific nodes.

@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from pydantic import Field, JsonValue, model_validator
 
 from nodeflowir._model import NodeFlowModel
+from nodeflowir.governance.models import ResourceFieldContract
 from nodeflowir.ir.types import PortName, TypeSpec, ValueKind
 
 BindingId = Annotated[
@@ -97,6 +98,7 @@ class ConfigurationField(NodeFlowModel):
     description: str | None = None
     constraints: FieldConstraints | None = None
     ui: FieldUI | None = None
+    resource: ResourceFieldContract | None = None
 
     @model_validator(mode="after")
     def _check_definition(self) -> ConfigurationField:
@@ -121,6 +123,14 @@ class ConfigurationField(NodeFlowModel):
                 raise ValueError(
                     "a multi_select configuration field must have array-compatible values"
                 )
+        if (
+            self.resource is not None
+            and self.resource.provider_id is not None
+            and self.ui is not None
+            and self.ui.provider is not None
+            and self.resource.provider_id != self.ui.provider
+        ):
+            raise ValueError("resource provider_id must match the configuration UI provider")
         return self
 
     def value_errors(self, value: JsonValue) -> tuple[str, ...]:
@@ -160,7 +170,9 @@ class ConfigField:
     """Class-declaration marker consumed by :func:`nodeflowir.nodes.node`.
 
     The decorator takes the Python annotation as the portable configuration
-    type.  It is intentionally a marker, not a descriptor or a UI widget.
+    type.  ``resource`` can mark a stable configuration value as an external
+    resource dependency for application-owned authorization preflight.  The
+    marker is intentionally neither a descriptor nor a UI widget.
     """
 
     def __init__(
@@ -171,12 +183,14 @@ class ConfigField:
         description: str | None = None,
         constraints: FieldConstraints | None = None,
         ui: FieldUI | None = None,
+        resource: ResourceFieldContract | None = None,
     ) -> None:
         self.required = required
         self.default = default
         self.description = description
         self.constraints = constraints
         self.ui = ui
+        self.resource = resource
 
     def to_definition(self, name: str, type_spec: TypeSpec) -> ConfigurationField:
         has_default = self.default is not _UNSET
@@ -191,6 +205,7 @@ class ConfigField:
             description=self.description,
             constraints=self.constraints,
             ui=self.ui,
+            resource=self.resource,
         )
 
 

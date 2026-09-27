@@ -8,9 +8,11 @@ from pydantic import Field, JsonValue, model_validator
 
 from nodeflowir._model import NodeFlowModel
 from nodeflowir.ir.types import NodeTypeId, PortName, SemanticVersion, TypeSpec
+from nodeflowir.metadata import Deprecation
 from nodeflowir.nodes.fields import BindingId, ConfigurationField
 
 ContractName = Annotated[str, Field(min_length=1, max_length=200)]
+IconIdentifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]*$")]
 
 
 class PortDefinition(NodeFlowModel):
@@ -34,6 +36,9 @@ class NodeDefinition(NodeFlowModel):
     display_name: ContractName | None = None
     description: str | None = None
     category: str | None = None
+    icon: IconIdentifier | None = None
+    search_terms: tuple[ContractName, ...] = ()
+    deprecation: Deprecation | None = None
     inputs: dict[PortName, PortDefinition] = Field(default_factory=dict)
     outputs: dict[PortName, PortDefinition] = Field(default_factory=dict)
     config: tuple[ConfigurationField, ...] = ()
@@ -46,6 +51,8 @@ class NodeDefinition(NodeFlowModel):
         names = [field.name for field in self.config]
         if len(names) != len(set(names)):
             raise ValueError("node configuration field names must be unique")
+        if len(self.search_terms) != len(set(self.search_terms)):
+            raise ValueError("node presentation search_terms must be unique")
         return self
 
     def metadata_document(self) -> dict[str, object]:
