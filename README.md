@@ -610,3 +610,7 @@ This repository currently implements:
 It does **not** implement PydanticAI integration, a visual builder, a node executor, provider or handler business implementations, scheduler, persistence layer, application APIs, frontend, Kubernetes integration, arbitrary embedded programming languages, or business-specific nodes.
 
 For design rationale and exact ownership boundaries, see [the architecture note](docs/architecture.md).
+
+## License
+
+NodeFlowIR is open source software licensed under the [MIT License](LICENSE).
