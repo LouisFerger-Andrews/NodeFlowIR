@@ -9,6 +9,14 @@ description = "A typed, canonical intermediate representation for node-based wor
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+keywords = [
+  "dsl",
+  "intermediate-representation",
+  "pydantic",
+  "python",
+  "workflow",
+  "workflow-builder",
+]
 authors = [
   { name = "NodeFlowIR contributors" },
 ]
@@ -28,6 +36,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "build>=1.2",
+  "pyright>=1.1.390",
   "pytest>=8.0",
   "ruff>=0.8",
 ]
@@ -35,6 +45,8 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/LouisFerger-Andrews/NodeFlowIR"
 Repository = "https://github.com/LouisFerger-Andrews/NodeFlowIR"
+Issues = "https://github.com/LouisFerger-Andrews/NodeFlowIR/issues"
+Changelog = "https://github.com/LouisFerger-Andrews/NodeFlowIR/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["nodeflowir"]
@@ -52,3 +64,10 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.pyright]
+include = ["nodeflowir"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"

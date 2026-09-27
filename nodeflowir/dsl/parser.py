@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import NoReturn
 
 from nodeflowir.dsl import ast
-from nodeflowir.dsl.errors import DSLParseError
+from nodeflowir.dsl.errors import DSLParseError, SourceLocation
 from nodeflowir.dsl.lexer import Token, tokenize
 
 
@@ -184,9 +185,11 @@ class Parser:
         self._expect("}", "'}' to close output block")
         return ast.OutputSyntax(location, assignments)
 
-    def _parse_run(self, alias: str | None, location=None) -> ast.RunSyntax:
-        location = location or self._advance().location
-        if location is not None and self._is_word("run"):
+    def _parse_run(
+        self, alias: str | None, location: SourceLocation | None = None
+    ) -> ast.RunSyntax:
+        location = self._advance().location if location is None else location
+        if self._is_word("run"):
             self._advance()
         type_id = self._expect_identifier("node type identifier").text
         type_version = self._parse_version() if self._match("@") else None
@@ -229,9 +232,9 @@ class Parser:
 
     def _parse_with_assignments(self) -> tuple[ast.AssignmentSyntax, ...]:
         if self._match("{"):
-            assignments = self._parse_assignments_until("}")
+            braced_assignments = self._parse_assignments_until("}")
             self._expect("}", "'}' to close with clause")
-            return assignments
+            return braced_assignments
         assignments: list[ast.AssignmentSyntax] = []
         while self.current.kind == "IDENT" and self.next.kind == "=":
             location = self.current.location
@@ -248,30 +251,37 @@ class Parser:
             attempts = self._expect_positive_integer("retry attempt count")
             return ast.RetrySyntax(location, attempts)
         self._expect("{", "retry attempt count or '{'")
-        values: dict[str, object] = {}
+        attempts: int | None = None
+        delay_seconds = 0.0
+        backoff = "fixed"
+        max_delay_seconds: float | None = None
+        seen_fields: set[str] = set()
         while self.current.kind != "}":
             key = self._expect_identifier("retry field").text
-            if key in values:
+            if key in seen_fields:
                 self._error(f"duplicate retry field '{key}'")
+            seen_fields.add(key)
             self._expect("=", "'=' after retry field")
-            if key in {"attempts"}:
-                values[key] = self._expect_positive_integer("retry attempts")
-            elif key in {"delay", "max_delay"}:
-                values[key] = self._parse_duration(key)
+            if key == "attempts":
+                attempts = self._expect_positive_integer("retry attempts")
+            elif key == "delay":
+                delay_seconds = self._parse_duration(key)
+            elif key == "max_delay":
+                max_delay_seconds = self._parse_duration(key)
             elif key == "backoff":
-                values[key] = self._expect_identifier("retry backoff strategy").text
+                backoff = self._expect_identifier("retry backoff strategy").text
             else:
                 self._error(f"unknown retry field '{key}'")
             self._match(",")
         self._advance()
-        if "attempts" not in values:
+        if attempts is None:
             self._error_at(location, "retry block requires 'attempts'")
         return ast.RetrySyntax(
             location,
-            attempts=values["attempts"],  # type: ignore[arg-type]
-            delay_seconds=values.get("delay", 0),  # type: ignore[arg-type]
-            backoff=values.get("backoff", "fixed"),  # type: ignore[arg-type]
-            max_delay_seconds=values.get("max_delay"),  # type: ignore[arg-type]
+            attempts=attempts,
+            delay_seconds=delay_seconds,
+            backoff=backoff,
+            max_delay_seconds=max_delay_seconds,
         )
 
     def _parse_error_clause(self) -> ast.ErrorSyntax:
@@ -364,6 +374,8 @@ class Parser:
         if self.current.kind == "-" and self.next.kind == "NUMBER":
             location = self._advance().location
             number = self._advance()
+            if not isinstance(number.value, (int, float)):
+                self._error_at(number.location, "expected a numeric literal")
             return ast.LiteralSyntax(location, -number.value)
         return self._parse_primary()
 
@@ -377,6 +389,8 @@ class Parser:
             return ast.LiteralSyntax(token.location, token.value)
         if token.kind == "DURATION":
             self._advance()
+            if not isinstance(token.value, (int, float)):
+                self._error_at(token.location, "expected a duration literal")
             return ast.LiteralSyntax(
                 token.location, token.value, duration_seconds=float(token.value)
             )
@@ -415,7 +429,7 @@ class Parser:
             return ast.ReferenceSyntax(token.location, name)
         self._error("expected an expression")
 
-    def _parse_object(self, location) -> ast.ObjectSyntax:
+    def _parse_object(self, location: SourceLocation) -> ast.ObjectSyntax:
         self._expect("{", "'{' after object")
         fields: list[tuple[str, ast.ExpressionSyntax]] = []
         while self.current.kind != "}":
@@ -439,6 +453,8 @@ class Parser:
 
     def _parse_duration(self, label: str) -> float:
         token = self._expect("DURATION", f"{label} duration such as 30s or 2m")
+        if not isinstance(token.value, (int, float)):
+            self._error_at(token.location, "expected a duration literal")
         return float(token.value)
 
     def _expect_positive_integer(self, label: str) -> int:
@@ -481,11 +497,11 @@ class Parser:
             self._index += 1
         return token
 
-    def _error(self, message: str) -> None:
+    def _error(self, message: str) -> NoReturn:
         raise DSLParseError(message, self.current.location)
 
     @staticmethod
-    def _error_at(location, message: str) -> None:
+    def _error_at(location: SourceLocation, message: str) -> NoReturn:
         raise DSLParseError(message, location)
 
 

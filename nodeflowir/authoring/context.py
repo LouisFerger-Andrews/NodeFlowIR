@@ -92,9 +92,9 @@ def validate_authored_workflow(
             continue
         for config_field in definition.config:
             ui = config_field.ui
-            provider_id = ui.provider if ui is not None else None
-            if provider_id is None or provider_id not in dynamic_values:
+            if ui is None or ui.provider is None or ui.provider not in dynamic_values:
                 continue
+            provider_id = ui.provider
             configured_value = node.config.get(config_field.name)
             if configured_value is None:
                 continue
@@ -168,6 +168,9 @@ def _normalize_provider_values(
     if provider_values is None:
         return {}
     return {
-        provider_id: AuthoringProviderValues(provider=provider_id, options=tuple(options))
+        provider_id: AuthoringProviderValues(
+            provider=provider_id,
+            options=tuple(ProviderOption.model_validate(option) for option in options),
+        )
         for provider_id, options in provider_values.items()
     }

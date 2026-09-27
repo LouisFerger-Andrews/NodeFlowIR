@@ -1,5 +1,7 @@
 """NodeFlowIR: a typed, canonical intermediate representation for workflows."""
 
+from importlib.metadata import PackageNotFoundError, version
+
 from nodeflowir.authoring import (
     AuthoringConstraints,
     AuthoringContext,
@@ -100,9 +102,15 @@ from nodeflowir.serialization import (
 )
 from nodeflowir.validation import ValidationResult, validate_workflow
 
+try:
+    __version__ = version("nodeflowir")
+except PackageNotFoundError:  # pragma: no cover - source trees without installed metadata.
+    __version__ = "0+unknown"
+
 __all__ = [
     "CURRENT_SCHEMA_VERSION",
     "CATALOG_VERSION",
+    "__version__",
     "BranchDefinition",
     "AccessGrant",
     "CatalogBehavior",

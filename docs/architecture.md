@@ -8,7 +8,7 @@ NodeFlowIR is the canonical semantic contract between workflow producers and a c
 Authoring adapters                  Application-owned boundary
 ──────────────────                  ──────────────────────────
 visual builder ─┐
-DSL compiler ───┼─> NodeFlowIR ───> validate → application-owned plan / execute custom nodes
+DSL compiler ───┼─> NodeFlowIR ───> validate → application-owned runtime may execute custom nodes
 AI output ──────┘        │                         │
                           │                         └─ scheduling, state, integrations
                           └─ stable JSON for storage, APIs, and review

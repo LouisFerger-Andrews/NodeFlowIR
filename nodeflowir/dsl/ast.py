@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from pydantic import JsonValue
+
 from nodeflowir.dsl.errors import SourceLocation
 
 
@@ -46,7 +48,7 @@ class BlockSyntax(SyntaxNode):
 
 @dataclass(frozen=True)
 class LiteralSyntax(SyntaxNode):
-    value: object
+    value: JsonValue
     duration_seconds: float | None = None
 
 

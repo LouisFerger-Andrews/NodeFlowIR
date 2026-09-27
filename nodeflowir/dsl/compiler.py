@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import NoReturn
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from nodeflowir.dsl import ast
 from nodeflowir.dsl.errors import DSLCompileError, DSLValidationError, SourceLocation
@@ -170,7 +170,7 @@ class Compiler:
         try:
             body = self._compile_block(workflow.body, environment, top_level=True)
             return Workflow(
-                schema_version=document.language_version,
+                schema_version="1.0",
                 workflow_version=workflow.version,
                 id=workflow.name,
                 name=workflow.display_name or workflow.name,
@@ -353,7 +353,7 @@ class Compiler:
         definition = self._definition(statement)
         config_fields = {field.name: field for field in definition.config}
         input_names = set(definition.inputs)
-        config: dict[str, Any] = {}
+        config: dict[str, JsonValue] = {}
         bound_inputs: set[str] = set()
         for assignment in statement.assignments:
             is_config = assignment.name in config_fields
@@ -573,7 +573,7 @@ class Compiler:
                 )
             return environment.values[root]
         if implicit_item_scope is not None:
-            return LoopItemReference(loop_id=implicit_item_scope, path=parts)
+            return LoopItemReference(loop_id=implicit_item_scope, path=tuple(parts))
         self._error(reference.location, f"unknown reference '{reference.text}'")
 
     def _compile_call(
@@ -671,10 +671,12 @@ class Compiler:
         if name in {"select", "pick", "omit"}:
             if len(call.arguments) < 2:
                 self._arity(call, 2)
-            fields = tuple(self._field_name(argument) for argument in call.arguments[1:])
+            arguments = call.arguments
+            assert len(arguments) >= 2
+            fields = tuple(self._field_name(argument) for argument in arguments[1:])
             return CollectionExpression(
                 operator=CollectionOperator(name),
-                collection=self._compile_expression(call.arguments[0], environment),
+                collection=self._compile_expression(arguments[0], environment),
                 fields=fields,
             )
         if name == "rename":
@@ -769,7 +771,9 @@ class Compiler:
             )
         self._error(call.location, f"unsupported deterministic operation '{name}'")
 
-    def _static_value(self, expression: ast.ExpressionSyntax, environment: _Environment) -> Any:
+    def _static_value(
+        self, expression: ast.ExpressionSyntax, environment: _Environment
+    ) -> JsonValue:
         value = self._compile_expression(expression, environment)
         if isinstance(value, LiteralValue):
             return value.value
@@ -785,7 +789,7 @@ class Compiler:
             "configuration and constants must be JSON literals, lists, or objects",
         )
 
-    def _static_ir_value(self, value: Value, location: SourceLocation) -> Any:
+    def _static_ir_value(self, value: Value, location: SourceLocation) -> JsonValue:
         if isinstance(value, LiteralValue):
             return value.value
         if isinstance(value, ArrayValue):
@@ -832,7 +836,7 @@ class Compiler:
         location: SourceLocation,
         message: str,
         cause: Exception | None = None,
-    ) -> None:
+    ) -> NoReturn:
         error = DSLCompileError(message, location)
         if cause is not None:
             raise error from cause

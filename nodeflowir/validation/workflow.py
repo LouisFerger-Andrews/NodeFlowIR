@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+
+from pydantic import JsonValue
 
 from nodeflowir.ir.control_flow import (
     BreakStep,
@@ -49,8 +52,21 @@ from nodeflowir.nodes import NodeDefinition, NodeRegistry, UnknownNodeDefinition
 from nodeflowir.validation.issues import IssueCode, ValidationIssue, ValidationResult
 
 
-def _type(kind: ValueKind, **kwargs: object) -> TypeSpec:
-    return TypeSpec(kind=kind, **kwargs)
+def _type(
+    kind: ValueKind,
+    *,
+    nullable: bool = False,
+    items: TypeSpec | None = None,
+    fields: dict[str, TypeSpec] | None = None,
+    enum_values: tuple[JsonValue, ...] | None = None,
+) -> TypeSpec:
+    return TypeSpec(
+        kind=kind,
+        nullable=nullable,
+        items=items,
+        fields=fields or {},
+        enum_values=enum_values,
+    )
 
 
 ANY = _type(ValueKind.ANY)
@@ -90,7 +106,7 @@ class _Context:
         )
 
     def issue(self, code: IssueCode, message: str, location: tuple[str | int, ...]) -> None:
-        self.issues.append(ValidationIssue(code=code, message=message, location=location))
+        self.issues.append(ValidationIssue(code=code, message=message, path=location))
 
 
 def _literal_type(value: object) -> TypeSpec:
@@ -804,7 +820,7 @@ def _validate_connection(
 def _validate_node_configuration(
     node_index: int,
     node_id: str,
-    config: dict[str, object],
+    config: Mapping[str, JsonValue],
     definition: NodeDefinition,
     issues: list[ValidationIssue],
 ) -> None:
@@ -815,7 +831,7 @@ def _validate_node_configuration(
                 ValidationIssue(
                     code=IssueCode.UNKNOWN_CONFIGURATION_FIELD,
                     message=f"node '{node_id}' has no configuration field '{name}'",
-                    location=("nodes", node_index, "config", name),
+                    path=("nodes", node_index, "config", name),
                 )
             )
     for name, config_field in fields.items():
@@ -824,7 +840,7 @@ def _validate_node_configuration(
                 ValidationIssue(
                     code=IssueCode.MISSING_REQUIRED_CONFIGURATION,
                     message=f"required configuration '{name}' is missing on node '{node_id}'",
-                    location=("nodes", node_index, "config", name),
+                    path=("nodes", node_index, "config", name),
                 )
             )
         elif name in config:
@@ -833,7 +849,7 @@ def _validate_node_configuration(
                     ValidationIssue(
                         code=IssueCode.INVALID_CONFIGURATION_VALUE,
                         message=f"configuration '{node_id}.{name}' {error}",
-                        location=("nodes", node_index, "config", name),
+                        path=("nodes", node_index, "config", name),
                     )
                 )
 
@@ -1027,7 +1043,7 @@ def validate_workflow(workflow: Workflow, registry: NodeRegistry) -> ValidationR
                         f"node '{node.id}' requires unregistered contract "
                         f"'{node.type}' version '{node.type_version}'"
                     ),
-                    location=("nodes", node_index),
+                    path=("nodes", node_index),
                 )
             )
 
@@ -1040,7 +1056,7 @@ def validate_workflow(workflow: Workflow, registry: NodeRegistry) -> ValidationR
                 ValidationIssue(
                     code=IssueCode.UNKNOWN_NODE,
                     message=f"connection target node '{connection.target.node_id}' does not exist",
-                    location=("connections", index, "target", "node_id"),
+                    path=("connections", index, "target", "node_id"),
                 )
             )
             continue
@@ -1052,7 +1068,7 @@ def validate_workflow(workflow: Workflow, registry: NodeRegistry) -> ValidationR
                         f"multiple connections bind input '{connection.target.port}' "
                         f"on node '{connection.target.node_id}'"
                     ),
-                    location=("connections", index, "target"),
+                    path=("connections", index, "target"),
                 )
             )
         bound_inputs.add(target)
@@ -1065,7 +1081,7 @@ def validate_workflow(workflow: Workflow, registry: NodeRegistry) -> ValidationR
                         f"node '{connection.target.node_id}' has no input port "
                         f"'{connection.target.port}'"
                     ),
-                    location=("connections", index, "target", "port"),
+                    path=("connections", index, "target", "port"),
                 )
             )
         connections[connection.target.node_id].append((index, connection))

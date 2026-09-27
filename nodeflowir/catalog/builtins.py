@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from pydantic import JsonValue
+
 from nodeflowir.catalog.models import (
     BranchDefinition,
     CatalogBehavior,
@@ -111,7 +115,7 @@ def _field(
     *,
     required: bool = True,
     data_type: TypeSpec | None = None,
-    **capabilities: str | bool,
+    **capabilities: JsonValue,
 ) -> CatalogConfigurationField:
     return CatalogConfigurationField(
         type=type,
@@ -132,7 +136,7 @@ def _item(
     inputs: tuple[CatalogPort, ...] = (),
     outputs: tuple[CatalogPort, ...] = (),
     branch_definition: BranchDefinition | None = None,
-    capabilities: dict[str, str | bool | int] | None = None,
+    capabilities: Mapping[str, JsonValue] | None = None,
     behavior: CatalogBehavior | None = None,
     icon: str | None = None,
     search_terms: tuple[str, ...] = (),
@@ -169,7 +173,7 @@ def _item(
         input_ports=inputs,
         output_ports=outputs,
         branch_definition=branch_definition,
-        capabilities=capabilities or {},
+        capabilities=dict(capabilities or {}),
     )
 
 

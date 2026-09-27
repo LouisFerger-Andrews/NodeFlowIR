@@ -10,16 +10,24 @@ from pydantic import ValidationError
 from nodeflowir import (
     CATALOG_VERSION,
     CompatibilityCode,
+    DataConnection,
     Deprecation,
     NodeDefinition,
     NodeFlow,
     NodeInstance,
+    PortAddress,
     Workflow,
+    WorkflowAccessPolicy,
+    WorkflowCatalog,
     WorkflowDiffKind,
+    WorkflowIdentity,
+    WorkflowRevision,
+    __version__,
     workflow_diff,
     workflow_fingerprint,
 )
 from nodeflowir.ir import FlowBlock, IfStep, LiteralValue, NodeStep, ObjectValue
+from nodeflowir.ir.workflow import MAX_WORKFLOW_CONNECTIONS, MAX_WORKFLOW_NODES
 from nodeflowir.serialization import workflow_from_json, workflow_to_json
 
 
@@ -59,6 +67,19 @@ def test_catalog_version_and_deprecation_keep_existing_nodes_loadable() -> None:
     assert item.deprecation == old_node.deprecation
     assert item not in catalog.palette_items()
     assert flow.nodes.resolve("utility.old-task", "1.0") is old_node
+
+
+def test_public_package_api_and_important_schemas_are_available() -> None:
+    assert __version__ == "0.1.0"
+    assert NodeFlow()
+    for model in (
+        Workflow,
+        WorkflowCatalog,
+        WorkflowAccessPolicy,
+        WorkflowIdentity,
+        WorkflowRevision,
+    ):
+        assert model.model_json_schema()
 
 
 def test_compatibility_preflight_reuses_migrations_and_node_registry_without_validation() -> None:
@@ -191,4 +212,34 @@ def test_structural_limits_reject_excessive_configuration_and_nesting() -> None:
             nodes=[NodeInstance(id="task", type="utility.task", type_version="1.0")],
             body=FlowBlock(steps=[NodeStep(node_id="task")]),
             outputs={"nested": nested},
+        )
+
+
+def test_structural_limits_reject_excessive_node_and_connection_counts() -> None:
+    with pytest.raises(ValidationError, match=f"at most {MAX_WORKFLOW_NODES} items"):
+        Workflow(
+            id="wf_too_many_nodes",
+            workflow_version=1,
+            name="Too many nodes",
+            nodes=[
+                NodeInstance(id=f"task_{index}", type="utility.task", type_version="1.0")
+                for index in range(MAX_WORKFLOW_NODES + 1)
+            ],
+            body=FlowBlock(steps=[NodeStep(node_id="task_0")]),
+        )
+
+    with pytest.raises(ValidationError, match=f"at most {MAX_WORKFLOW_CONNECTIONS} items"):
+        Workflow(
+            id="wf_too_many_connections",
+            workflow_version=1,
+            name="Too many connections",
+            nodes=[NodeInstance(id="task", type="utility.task", type_version="1.0")],
+            connections=[
+                DataConnection(
+                    target=PortAddress(node_id="task", port="value"),
+                    value=LiteralValue(value=index),
+                )
+                for index in range(MAX_WORKFLOW_CONNECTIONS + 1)
+            ],
+            body=FlowBlock(steps=[NodeStep(node_id="task")]),
         )

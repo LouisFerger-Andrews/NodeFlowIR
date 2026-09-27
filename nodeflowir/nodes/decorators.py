@@ -20,6 +20,18 @@ NodeTarget = Callable[..., Any] | type[Any]
 PortSource = type[BaseModel] | Mapping[str, Any]
 
 
+def _attach_definition(target: NodeTarget, definition: NodeDefinition) -> None:
+    """Attach SDK metadata while supporting both functions and classes."""
+
+    if isinstance(target, type):
+        type.__setattr__(target, "__nodeflowir_definition__", definition)
+        return
+    attributes = getattr(target, "__dict__", None)
+    if not isinstance(attributes, dict):
+        raise TypeError("node targets must allow contract metadata attachment")
+    attributes["__nodeflowir_definition__"] = definition
+
+
 def _type_spec(annotation: Any) -> TypeSpec:
     """Translate common Python/Pydantic annotations to portable type specs."""
 
@@ -259,7 +271,7 @@ def node(
             )
         if registry is not None:
             registry.register(definition)
-        target.__nodeflowir_definition__ = definition
+        _attach_definition(target, definition)
         return target
 
     return decorate

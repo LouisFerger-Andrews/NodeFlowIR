@@ -5,15 +5,18 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from nodeflowir.dsl.errors import DSLParseError, SourceLocation
+
+TokenValue: TypeAlias = str | int | float | None
 
 
 @dataclass(frozen=True)
 class Token:
     kind: str
     text: str
-    value: object
+    value: TokenValue
     location: SourceLocation
 
 

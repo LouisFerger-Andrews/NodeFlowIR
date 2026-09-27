@@ -553,7 +553,31 @@ uv run pytest
 uv run ruff check .
 ```
 
-The flake provides Python 3.12, `uv`, Ruff, Pyright, and Git. A normal Python consumer can install the package with its preferred installer once it is published.
+The flake provides Python 3.12, `uv`, Ruff, Pyright, and Git. A normal Python consumer can install the package with its preferred installer from a pinned Git tag or immutable commit.
+
+## Installation and documentation
+
+NodeFlowIR is not published to PyPI. A consuming application should pin a released tag or immutable commit—not mutable `main`:
+
+```bash
+python -m pip install "nodeflowir @ git+https://github.com/LouisFerger-Andrews/NodeFlowIR.git@v0.1.0"
+```
+
+For a stricter deployment pin, replace `v0.1.0` with the exact reviewed commit SHA. The tag identifies the initial alpha integration baseline; consumers should review the changelog and compatibility contracts before upgrading.
+
+Detailed contracts and integration guidance are available in:
+
+- [Architecture](docs/architecture.md)
+- [NodeFlow DSL language specification](docs/language-spec.md)
+- [Workflow catalog contract](docs/catalog-contract.md)
+- [Presentation contract](docs/presentation-contract.md)
+- [Authoring context](docs/authoring-context.md)
+- [Consumer integration](docs/consumer-integration.md)
+- [Access and versioning](docs/access-and-versioning.md)
+- [Compatibility and deprecation](docs/compatibility.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security reporting](SECURITY.md)
 
 ## Project structure
 
